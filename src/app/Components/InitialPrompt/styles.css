@@ -1,0 +1,25 @@
+/* File Location: src/app/Components/InitialPrompt/styles.css */
+
+.initial-prompt-container {
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+}
+
+/* --- Media Query for Mobile Screens --- */
+/* This block will only apply when the screen width is 768px or less */
+@media (max-width: 768px) {
+  .initial-prompt-container {
+    padding: 0 1rem; /* Add horizontal padding on mobile */
+  }
+
+  .initial-prompt-title {
+    /* Reduce the font size of the main heading */
+    font-size: 2.2rem !important;
+  }
+
+  .suggestion-bubbles-container > div {
+    /* Make the bubble rows wrap on mobile */
+    flex-wrap: wrap;
+  }
+}

@@ -1,0 +1,46 @@
+/* File Location: src/app/Components/ChatPanel/styles.module.css */
+.chatPanel {
+  flex: 1; /* This makes the chat panel take up the available space */
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 2rem;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.messageList {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 1rem; /* Space for scrollbar */
+}
+
+.messageItem {
+  border: none !important;
+}
+
+.messageTitle {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.messageContent {
+  color: #e5e5e5;
+  line-height: 1.6;
+}
+
+.inputArea {
+  padding-top: 1rem;
+  border-top: 1px solid #3a3b3f;
+}
+
+.inputField {
+  background-color: #3a3b3f !important;
+  border: none !important;
+  color: #ffffff !important;
+  padding: 0.75rem 1rem;
+}
+
+.sendButton {
+  background-color: #10a37f !important;
+}

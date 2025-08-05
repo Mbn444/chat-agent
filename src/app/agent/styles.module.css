@@ -1,0 +1,61 @@
+/* File Location: src/app/agent/styles.module.css */
+.agentContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.initialPromptContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.chatViewContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.title {
+  color: #ffffff;
+  margin-bottom: 2rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.chatRow {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.chatCol {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+/* File Location: src/app/Components/Sidebar/styles.module.css */
+.sidebar {
+  width: 260px;
+  background-color: #2a2b2f; /* Slightly lighter than the main background */
+  padding: 1.5rem;
+  border-right: 1px solid #3a3b3f;
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  color: #ffffff !important; /* Antd overrides, so !important is useful here */
+  margin-bottom: 0.5rem !important;
+}
+
+.description {
+  color: #a0a1a5 !important;
+  font-size: 0.9rem;
+}

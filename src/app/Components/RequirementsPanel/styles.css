@@ -1,0 +1,40 @@
+/* File Location: src/app/Components/RequirementsPanel/styles.module.css */
+.requirementsPanel {
+  width: 320px;
+  background-color: #2a2b2f;
+  padding: 1.5rem;
+  border-left: 1px solid #3a3b3f;
+  overflow-y: auto;
+}
+
+.card {
+  background-color: transparent !important;
+  border: none !important;
+}
+
+.pre {
+  white-space: pre-wrap;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  color: #e5e5e5;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.placeholder {
+  text-align: center;
+  padding-top: 4rem;
+}
+
+.placeholderIcon {
+  font-size: 3rem;
+  color: #4a4b4f;
+}
+
+.placeholderTitle {
+  color: #ffffff !important;
+  margin-top: 1.5rem !important;
+}
+
+.placeholderText {
+  color: #a0a1a5 !important;
+}
