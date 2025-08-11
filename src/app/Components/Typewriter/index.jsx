@@ -2,47 +2,45 @@
 import { useState, useEffect } from 'react';
 import React from 'react';
 
-// NEW: The component now accepts an `onUpdate` callback function
 const Typewriter = ({ text, animate = true, onUpdate }) => {
   const [displayedText, setDisplayedText] = useState('');
   const [isFinished, setIsFinished] = useState(false);
 
-  // NEW: This effect calls the onUpdate callback every time the text changes, triggering a scroll
   useEffect(() => {
-    if (onUpdate) {
-      onUpdate();
-    }
-  }, [displayedText, onUpdate]);
-
-  useEffect(() => {
-    if (!animate) {
-      setDisplayedText(text);
+    if (!animate || !text) {
+      setDisplayedText(text || '');
       setIsFinished(true);
       return;
     }
 
     setDisplayedText('');
     setIsFinished(false);
-    
-    if (text) {
-      let i = 0;
-      const intervalId = setInterval(() => {
-        if (i < text.length) {
-          setDisplayedText(prev => prev + text.charAt(i));
-          i++;
-        } else {
-          clearInterval(intervalId);
-          setIsFinished(true);
-        }
-      }, 10);
 
-      return () => clearInterval(intervalId);
-    }
+    let i = 0;
+    let currentText = '';
+    const intervalId = setInterval(() => {
+      currentText += text[i];
+      setDisplayedText(currentText);
+      i++;
+
+      if (i >= text.length) {
+        clearInterval(intervalId);
+        setIsFinished(true);
+      }
+    }, 10);
+
+    return () => clearInterval(intervalId);
   }, [text, animate]);
+
+  useEffect(() => {
+    if (onUpdate) {
+      onUpdate();
+    }
+  }, [displayedText, onUpdate]);
 
   const renderTextWithFormatting = () => {
     const sourceText = animate ? displayedText : text;
-    const lines = sourceText.split('\n');
+    const lines = sourceText?.split('\n') || [];
     const elements = [];
     let listItems = [];
 

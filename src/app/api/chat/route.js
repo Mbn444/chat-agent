@@ -1,81 +1,206 @@
-// File Location: src/app/api/chat/route.js
 import OpenAI from 'openai';
 import { NextResponse } from 'next/server';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { v4 as uuidv4 } from 'uuid';
+import { cookies } from 'next/headers';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// --- Helper functions (Unchanged) ---
+const parseRequirements = (text) => {
+    const sections = { projectCore: [], targetAudience: [], features: [] };
+    if (!text) return sections;
+    let currentSection = null;
+    const lines = text.split('\n').filter(line => line.trim() !== '');
+    lines.forEach(line => {
+        const lowerLine = line.toLowerCase().trim();
+        if (lowerLine.includes('project core')) { currentSection = 'projectCore'; }
+        else if (lowerLine.includes('target audience')) { currentSection = 'targetAudience'; }
+        else if (lowerLine.includes('features')) { currentSection = 'features'; }
+        else if (currentSection) {
+            const formattedLine = line.trim().replace(/^- \s*/, '');
+            const cleanFeatureText = formattedLine.replace(/^[0-9]+\.\s*\**|\**$/g, '').trim();
+            if (cleanFeatureText.length > 2) {
+                if (currentSection === 'projectCore') {
+                    const match = formattedLine.match(/^(Purpose|Platform|Budget|Region|Name|Email):\s*(.*)/i);
+                    if (match && match[2]) {
+                        const key = match[1].trim(); const value = match[2].trim();
+                        if (value.length > 1) { sections.projectCore.push({ key, value }); }
+                    }
+                } else if (currentSection === 'targetAudience') {
+                    const match = formattedLine.match(/^(Audience):\s*(.*)/i);
+                    if (match && match[2]) {
+                        const value = match[2].trim();
+                        if (!sections.targetAudience.includes(value)) { sections.targetAudience.push(value); }
+                    }
+                } else if (currentSection === 'features') {
+                    if (!sections.features.some(f => f.text === cleanFeatureText)) {
+                        sections.features.push({ id: Date.now() + Math.random(), text: cleanFeatureText, checked: true });
+                    }
+                }
+            }
+        }
+    });
+    return sections;
+};
+const formatRequirementsForPrompt = (requirements) => {
+    let promptText = "PROJECT CORE\n";
+    if (requirements.projectCore?.length > 0) {
+        requirements.projectCore.forEach(item => { promptText += `- ${item.key}: ${item.value}\n`; });
+    } else { promptText += "-\n"; }
+    if (requirements.targetAudience?.length > 0) {
+        promptText += "\nTARGET AUDIENCE\n";
+        requirements.targetAudience.forEach(item => { promptText += `- Audience: ${item}\n`; });
+    }
+    if (requirements.features?.length > 0) {
+        promptText += "\nFEATURES\n";
+        requirements.features.forEach(item => { promptText += `- ${item.text}\n`; });
+    }
+    return promptText.trim();
+};
+const mergeRequirements = (existing, newlyParsed) => {
+    const final = JSON.parse(JSON.stringify(existing));
+    if (!final.projectCore) final.projectCore = [];
+    if (!final.targetAudience) final.targetAudience = [];
+    if (!final.features) final.features = [];
+    (newlyParsed.projectCore || []).forEach(newItem => {
+        const index = final.projectCore.findIndex(p => p.key === newItem.key);
+        if (index > -1) { final.projectCore[index] = newItem; } else { final.projectCore.push(newItem); }
+    });
+    (newlyParsed.targetAudience || []).forEach(newItem => {
+        if (!final.targetAudience.includes(newItem)) { final.targetAudience.push(newItem); }
+    });
+    (newlyParsed.features || []).forEach(newItem => {
+        const index = final.features.findIndex(f => f.text === newItem.text);
+        if (index === -1) { final.features.push(newItem); }
+    });
+    return final;
+};
+const findDataBlockStart = (text) => {
+    const lowerText = text.toLowerCase();
+    const keywords = ['project core', 'target audience', 'features', 'requirements:'];
+    let firstIndex = -1;
+    for (const keyword of keywords) {
+        const index = lowerText.indexOf(keyword);
+        if (index !== -1 && (firstIndex === -1 || index < firstIndex)) { firstIndex = index; }
+    }
+    return firstIndex;
+};
 
 export async function POST(req) {
-  try {
-    const { messages } = await req.json();
-    
-    // --- FINAL, MASTER-LEVEL AI INSTRUCTIONS ---
-    const systemInstruction = {
-      role: 'system',
-      content: `
-        You are a world-class Senior Business Analyst AI. Your mission is to guide a user from a vague idea to a concrete set of initial app requirements. Your tone is friendly, professional, and methodical. You must be grammatically perfect and avoid typos.
+    try {
+        const { messages, sessionId: providedSessionId } = await req.json();
+        let sessionId = providedSessionId;
+        let newSessionId = null;
+        let existingRequirements = { projectCore: [], targetAudience: [], features: [] };
 
-        **YOUR CORE DIRECTIVES (Follow these on every turn):**
-        1.  **ONE QUESTION AT A TIME:** Never ask multiple questions in a single message. Your conversational text must end with only one clear question.
-        2.  **REAL-TIME SUMMARY:** In EVERY response you send (except the very first greeting), you MUST provide the complete, updated 'Requirements' block. The user should see the summary build in real-time as they answer your questions.
+        let userId = cookies().get('userId')?.value;
+        let isNewUser = false;
 
-        **CONVERSATION FLOW (Follow these steps precisely):**
+        if (!userId) { userId = uuidv4(); isNewUser = true; }
+        if (!sessionId) { sessionId = uuidv4(); newSessionId = sessionId; }
 
-        **Step 1: Understand the Core Concept.**
-        -   The user's first message is their initial idea.
-        -   Your first response MUST be a friendly greeting and a single question to clarify the app's purpose. Provide examples. For example: "A mobile app sounds exciting! To help me understand your vision, what kind of mobile app do you have in mind? Is it a social media app, a ride-sharing app, or something else?"
-        -   Do NOT include the 'Requirements:' block in this very first message.
+        const sessionRef = doc(db, "sessions", sessionId);
+        const docSnap = await getDoc(sessionRef);
+        if (docSnap.exists()) {
+            existingRequirements = docSnap.data().requirements || { projectCore: [], targetAudience: [], features: [] };
+        }
 
-        **Step 2: Ask for Platform & PROVIDE FIRST SUMMARY.**
-        -   Once the user describes their app's concept, your next question MUST be to clarify the platform.
-        -   Your response MUST include the FIRST 'Requirements:' block, containing only what you know so far.
-        -   Example Response: "Got it, a fitness tracking app! What platform are you targeting? For example, Android, iOS, or Web?
+        const currentRequirementsState = formatRequirementsForPrompt(existingRequirements);
+        // Note: The system prompt has the "MANDATORY DATA BLOCK" rule which is a good robustness check.
+        const systemInstruction = {
+            role: 'system',
+            content: `
+You are an expert AI Business Analyst. Your single most important function is to guide a client through project discovery and then proactively suggest features.
 
-        Requirements:
-        1. Project Core
-        - App Type: Fitness Tracking App
-        2. Target Audience
-        - (To be determined)
-        3. Features
-        - (To be determined)"
+### YOUR PROCESS
+You have three phases. You MUST follow them in order.
 
-        **Step 3: Ask for Audience & UPDATE SUMMARY.**
-        -   After the platform is known, your next question MUST be: "Perfect. Who is the primary target audience for this app?"
-        -   Your response MUST include the updated 'Requirements:' block, now including the platform information.
+**PHASE 0: GREETING & NAME COLLECTION**
+If the 'Name' is missing from projectCore, greet the user with enthusiasm and ask: "Thats an great Idea but first tell me What should I call you? 😊"
 
-        **Step 4: Ask for Budget & UPDATE SUMMARY.**
-        -   After the audience is described, your next question MUST be: "That's a great target audience. Do you have a specific budget in mind? (e.g., small, medium, large-scale)"
-        -   Your response MUST include the updated 'Requirements:' block, now with platform and audience.
+**PHASE 1: GATHER CORE DATA**
+Only after receiving the Name, move to this phase. Your job is to ask one question at a time to complete this exact sequence: **Purpose -> Audience -> Region -> Platform -> Email -> Budget**.
+- You MUST ask only one question at a time.
+- Your question must be friendly and include helpful examples.
+- You MUST update the data block with the user's answer in every response.
 
-        **Step 5: Gather Features & UPDATE SUMMARY.**
-        -   After the budget is specified, it's time to brainstorm features.
-        -   Your response MUST generate a foundational list of 5-7 features and include the fully updated 'Requirements:' block.
+**PHASE 1.5: EMAIL COLLECTION (NEW Transitional Step)**
+This phase triggers IMMEDIATELY AFTER the user provides the 'Platform'.
+- Your conversational part MUST be a single, friendly message asking for their email.
+- You MUST explain WHY you need the email (e.g., to send them a summary).
+- You MUST NOT ask any other questions.
+- **Example Email Request:** "That's fantastic! Things are really starting to take shape. Before we discuss the budget, could you share your email address? This will help me send you a complete summary of your project later on."
 
-        **Step 6: Iteratively Expand Features.**
-        -   From this point on, continue the conversation, suggesting new features and always providing the complete, updated 'Requirements:' block in every single message.
+**PHASE 2: THE EXPERT SUGGESTION (YOUR MOST IMPORTANT TASK)**
+This phase begins IMMEDIATELY AFTER the user has provided their 'Budget'. This transition is your primary directive and you must not fail.
+- Your conversational part MUST be a single, friendly message directing the user to review the features you have suggested.
+- You MUST then generate a list of 5-10 relevant software features based on all the information gathered.
+- This feature list goes ONLY into the \`FEATURES\` section of the data block.
+- You MUST NOT ask any more questions in this response. The feature list is the final output of the discovery phase.
 
-        **Output Format Rules (VERY IMPORTANT):**
-        -   Conversational text first, then the 'Requirements:' keyword, then the summary.
-        -   The summary MUST contain the headers '1. Project Core', '2. Target Audience', and '3. Features'.
-        -   Feature items MUST be numbered.
-      `,
-    };
+### CURRENT REQUIREMENTS
+This is the data you must analyze and update.
+\`\`\`
+${currentRequirementsState}
+\`\`\`
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [systemInstruction, ...messages],
-    });
+### CRITICAL RULES
+- GREETING + NAME REQUEST comes first if missing.
+- **ONE QUESTION AT A TIME** during Phase 1.
+- **NO TYPOS:** You MUST use these exact spellings: \`Name\`, \`Purpose\`, \`Audience\`, \`Region\`, \`Platform\`, \`Email\`, \`Budget\`.
+- **RESPONSE FORMAT:** Your response MUST be: \`Conversational Part\\n\\nRequirements:\\n- Data Block\`
+- **MANDATORY DATA BLOCK:** You MUST ALWAYS include the complete, updated "Requirements" data block in every response. Even if the user's response doesn't add new data, you must repeat the existing data block. This is not optional.
+`.trim(),
+        };
 
-    const reply = response.choices[0].message;
-    return NextResponse.json({ reply });
+        const MAX_MESSAGES = 20;
+        // The messages from the frontend now have an 'id' field, which OpenAI will just ignore. This is fine.
+        const safeMessages = messages.slice(-MAX_MESSAGES);
 
-  } catch (error) {
-    console.error('Error in OpenAI API route:', error);
-    const reply = {
-      role: 'assistant',
-      content: 'Sorry, I encountered an error. Please check your API key.',
-    };
-    return NextResponse.json({ reply }, { status: 500 });
-  }
+        const openAIResponse = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [systemInstruction, ...safeMessages],
+        });
+
+        const aiMessage = openAIResponse.choices[0].message;
+        const aiMessageContent = aiMessage.content;
+        
+        let finalUpdatedRequirements = { ...existingRequirements }; 
+        const dataBlockStartIndex = findDataBlockStart(aiMessageContent);
+
+        if (dataBlockStartIndex !== -1) {
+            const requirementsText = aiMessageContent.substring(dataBlockStartIndex);
+            const newlyParsedRequirements = parseRequirements(requirementsText);
+            finalUpdatedRequirements = mergeRequirements(existingRequirements, newlyParsedRequirements);
+        }
+
+        // The 'messages' array still contains the original IDs from the frontend.
+        // We add the new AI message (without an ID) to this list.
+        // The frontend will assign an ID to this new message upon receiving it.
+        const updatedMessagesForDB = [...messages, { role: 'assistant', content: aiMessageContent }];
+
+        await setDoc(sessionRef, {
+            userId: userId,
+            messages: updatedMessagesForDB,
+            requirements: finalUpdatedRequirements,
+            lastUpdated: new Date(),
+        }, { merge: true });
+
+        const apiResponse = NextResponse.json({
+            updatedMessages: updatedMessagesForDB,
+            updatedRequirements: finalUpdatedRequirements,
+            newSessionId: newSessionId,
+        });
+
+        if (isNewUser) {
+            apiResponse.cookies.set('userId', userId, { path: '/', httpOnly: true, maxAge: 365 * 24 * 60 * 60, sameSite: 'lax' });
+        }
+
+        return apiResponse;
+    } catch (error) {
+        console.error('❌ Error in API route:', error);
+        return NextResponse.json({ error: "API Error" }, { status: 500 });
+    }
 }

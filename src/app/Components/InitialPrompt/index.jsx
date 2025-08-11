@@ -17,8 +17,8 @@ const suggestions = [
   'Create a financial app',
   'Design a directory website',
   'Build a project management app',
-  'Make a landing page',
-  'Generate a CRM',
+  'Create an app like Uber',
+  'Generate app like Airbnb',
   'Build a mobile app'
 ];
 

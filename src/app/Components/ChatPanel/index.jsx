@@ -1,64 +1,85 @@
-"use client";
+'use client';
+
 import { useState, useEffect, useRef } from 'react';
-import { Input, Button, List, Spin, Avatar, Space } from 'antd';
-import { UserOutlined, RobotOutlined } from '@ant-design/icons';
-import Typewriter from '@/app/Components/Typewriter';
+import { Input, Button, List, Avatar } from 'antd';
+import { UserOutlined, RobotOutlined, SendOutlined } from '@ant-design/icons';
+import { TypeAnimation } from 'react-type-animation';
+import './styles.css';
 
 const ChatPanel = ({ messages, onSendMessage, loading }) => {
   const [inputValue, setInputValue] = useState('');
-  const handleSend = () => { if (inputValue.trim()) { onSendMessage(inputValue); setInputValue(''); } };
+  const listContainerRef = useRef(null);
 
-  // --- NEW: A more robust auto-scrolling logic ---
-  const listContainerRef = useRef(null); // We now put the ref on the scrollable container itself
-
-  const scrollToBottom = () => {
-    if (listContainerRef.current) {
-      // This is the most reliable way to scroll to the absolute bottom
-      listContainerRef.current.scrollTop = listContainerRef.current.scrollHeight;
+  // --- START OF THE FIX ---
+  // We will wrap the scroll logic in a setTimeout to ensure it runs
+  // AFTER React has rendered the new message to the screen.
+  useEffect(() => {
+    const container = listContainerRef.current;
+    if (container) {
+      // A small delay (even 1 millisecond is enough) pushes this to the end of the event queue.
+      // This gives React time to update the DOM.
+      setTimeout(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth' // Use smooth scrolling for a better user experience
+        });
+      }, 100); // 100ms is a safe delay to ensure rendering is complete
     }
+  }, [messages]);
+  // --- END OF THE FIX ---
+
+
+  const handleSend = () => {
+    if (!inputValue.trim()) return;
+    onSendMessage(inputValue);
+    setInputValue('');
   };
 
-  // This useEffect serves as a fallback for initial loads and non-animated messages
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages.length]); // Triggers when a new message is added
-  // --- END of new scroll logic ---
-
-  const panelStyle = {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    backgroundColor: '#171717',
-    borderRadius: '12px',
-    padding: '1.5rem',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+  const getConversationalPart = (text) => {
+    if (!text) return '';
+    const dataBlockIndex = text.search(/PROJECT CORE|TARGET AUDIENCE|FEATURES|Requirements:/i);
+    if (dataBlockIndex !== -1) {
+      return text.substring(0, dataBlockIndex).trim();
+    }
+    return text.trim();
   };
 
   return (
-    <div style={panelStyle}>
-      {/* The ref is now attached to this scrollable div */}
-      <div ref={listContainerRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: '1rem' }}>
+    <div className="chatPanel">
+      <div ref={listContainerRef} className="messageList">
         <List
           dataSource={messages}
-          renderItem={(item, index) => {
-            const isLastMessage = index === messages.length - 1;
-            const isAIMessage = item.role === 'assistant';
+          renderItem={(item) => {
+            const isLastMessage = messages.indexOf(item) === messages.length - 1;
+            const isAI = item.role === 'assistant';
+            const displayContent = isAI ? getConversationalPart(item.content) : item.content;
 
             return (
-              <List.Item style={{ border: 'none' }}>
+              <List.Item key={item.id} className="messageItem">
                 <List.Item.Meta
-                  avatar={isAIMessage ? <Avatar style={{ backgroundColor: '#1890ff' }} icon={<RobotOutlined />} /> : <Avatar icon={<UserOutlined />} />}
-                  title={<span style={{ fontWeight: 600 }}>{isAIMessage ? 'AI Analyst' : 'You'}</span>}
-                  description={
-                    isAIMessage ? (
-                      <Typewriter 
-                        text={item.content} 
-                        animate={isLastMessage}
-                        // We pass the scroll function as a callback, but only for the last message
-                        onUpdate={isLastMessage ? scrollToBottom : null} 
+                  avatar={
+                    isAI ? (
+                      <Avatar
+                        style={{ backgroundColor: '#171717', border: '1px solid #00C26C' }}
+                        icon={<RobotOutlined style={{ color: '#00C26C' }} />}
                       />
                     ) : (
-                      <p style={{ margin: 0, color: '#e0e0e0' }}>{item.content}</p>
+                      <Avatar style={{ backgroundColor: '#333' }} icon={<UserOutlined />} />
+                    )
+                  }
+                  title={<span className="messageTitle">{isAI ? 'AI Business Analyst' : 'You'}</span>}
+                  description={
+                    isAI && isLastMessage && displayContent.length > 0 ? (
+                      <TypeAnimation
+                        key={item.id}
+                        sequence={[displayContent]}
+                        wrapper="p"
+                        speed={70}
+                        cursor={true}
+                        style={{ margin: 0, color: '#e0e0e0', whiteSpace: 'pre-wrap' }}
+                      />
+                    ) : (
+                      <p className="messageContent">{displayContent}</p>
                     )
                   }
                 />
@@ -66,20 +87,25 @@ const ChatPanel = ({ messages, onSendMessage, loading }) => {
             );
           }}
         />
-        {/* The old target div is no longer needed */}
       </div>
-      <div style={{ paddingTop: '1.5rem', marginTop: '1rem', borderTop: '1px solid #303030' }}>
-        <Space.Compact style={{ width: '100%' }}>
-          <Input
-            style={{ border: 'none' }}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onPressEnter={handleSend}
-            placeholder="Tell me about your app idea..."
-            disabled={loading}
-          />
-          <Button type="primary" onClick={handleSend} loading={loading}>Send</Button>
-        </Space.Compact>
+
+      <div className="inputContainer">
+        <Input
+          className="chatInput"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onPressEnter={!loading ? handleSend : undefined}
+          placeholder="Tell me about your app idea..."
+          disabled={loading}
+          autoFocus
+        />
+        <Button
+          className="chatSendButton"
+          type="primary"
+          onClick={handleSend}
+          loading={loading}
+          icon={<SendOutlined />}
+        />
       </div>
     </div>
   );
