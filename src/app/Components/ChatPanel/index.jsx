@@ -10,23 +10,17 @@ const ChatPanel = ({ messages, onSendMessage, loading }) => {
   const [inputValue, setInputValue] = useState('');
   const listContainerRef = useRef(null);
 
-  // --- START OF THE FIX ---
-  // We will wrap the scroll logic in a setTimeout to ensure it runs
-  // AFTER React has rendered the new message to the screen.
   useEffect(() => {
     const container = listContainerRef.current;
     if (container) {
-      // A small delay (even 1 millisecond is enough) pushes this to the end of the event queue.
-      // This gives React time to update the DOM.
       setTimeout(() => {
         container.scrollTo({
           top: container.scrollHeight,
-          behavior: 'smooth' // Use smooth scrolling for a better user experience
+          behavior: 'smooth'
         });
-      }, 100); // 100ms is a safe delay to ensure rendering is complete
+      }, 100);
     }
   }, [messages]);
-  // --- END OF THE FIX ---
 
 
   const handleSend = () => {
@@ -44,15 +38,25 @@ const ChatPanel = ({ messages, onSendMessage, loading }) => {
     return text.trim();
   };
 
+  // --- FIX #1: Get the ID of the last message in a stable way ---
+  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
+
   return (
     <div className="chatPanel">
       <div ref={listContainerRef} className="messageList">
         <List
           dataSource={messages}
           renderItem={(item) => {
-            const isLastMessage = messages.indexOf(item) === messages.length - 1;
+            // --- FIX #2: Make the check for the last message robust by comparing stable IDs ---
+            const isLastMessage = item.id === lastMessageId;
             const isAI = item.role === 'assistant';
-            const displayContent = isAI ? getConversationalPart(item.content) : item.content;
+            
+            let displayContent = item.content; // Default for user messages
+            if (isAI) {
+                let conversationalPart = getConversationalPart(item.content);
+                // Clean the AI's text from any unwanted markdown characters
+                displayContent = conversationalPart.replace(/^"|"$|[*_`]/g, '').trim();
+            }
 
             return (
               <List.Item key={item.id} className="messageItem">
@@ -69,6 +73,9 @@ const ChatPanel = ({ messages, onSendMessage, loading }) => {
                   }
                   title={<span className="messageTitle">{isAI ? 'AI Business Analyst' : 'You'}</span>}
                   description={
+                    // --- FIX #3: The final, most important fix ---
+                    // Render the animation component ONLY if it's the last AI message AND the content is ready.
+                    // This prevents it from rendering in an intermediate state and getting interrupted.
                     isAI && isLastMessage && displayContent.length > 0 ? (
                       <TypeAnimation
                         key={item.id}
