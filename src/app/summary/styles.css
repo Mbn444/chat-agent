@@ -1,0 +1,21 @@
+/* File Location: src/app/summary/summary.css */
+
+.blinking-bulb {
+  font-size: 120px; /* The large size for the bulb */
+  animation: pulseAnimation 2s infinite ease-in-out;
+}
+
+/* 
+  This is the glowing animation. 
+  By placing it in a CSS file, we ensure it's loaded correctly.
+*/
+@keyframes pulseAnimation {
+  0%, 100% { 
+    color: #444; 
+    text-shadow: none; 
+  }
+  50% { 
+    color: #FFD700; 
+    text-shadow: 0 0 10px #FFD700, 0 0 25px #FFD700, 0 0 50px rgba(255, 215, 0, 0.8); 
+  }
+}

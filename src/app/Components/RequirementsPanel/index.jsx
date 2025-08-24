@@ -168,7 +168,7 @@ const RequirementsPanel = ({
                           lineHeight: '1.5'
                         }}
                       >
-                        {`${toRoman(index + 1)}. ${featureText}`}
+                        {`• ${featureText}`}
                       </Checkbox>
                     );
                   })}

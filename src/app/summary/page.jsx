@@ -1,9 +1,15 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Typography, Modal, Empty, List, Row, Col } from 'antd';
 import { ArrowLeftOutlined, BulbOutlined, ToolOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import HubSpotForm from '@/app/Components/HubSpotForm';
+
+// --- MODIFICATION START ---
+// Import the new dedicated CSS file for our animation.
+import './styles.css';
+// --- MODIFICATION END ---
+
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -22,22 +28,17 @@ const RatingSection = ({ title, rating, description }) => (
   </div>
 );
 
+// --- MODIFICATION START ---
+// The GeneratingLoader component is now much simpler.
+// We have removed the <style jsx> block completely, as the styles are now in summary.css.
 const GeneratingLoader = ({ loadingText }) => (
   <div style={{ textAlign: 'center', color: '#a0a0a0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-    <style jsx>{`
-      .blinking-bulb {
-        font-size: 120px; 
-        animation: pulseAnimation 2s infinite ease-in-out;
-      }
-      @keyframes pulseAnimation {
-        0%, 100% { color: #444; text-shadow: none; }
-        50% { color: #FFD700; text-shadow: 0 0 10px #FFD700, 0 0 25px #FFD700, 0 0 50px rgba(255, 215, 0, 0.8); }
-      }
-    `}</style>
     <BulbOutlined className="blinking-bulb" />
     <Title level={2} style={{ color: '#E0E0E0', marginTop: '40px' }}>{loadingText}</Title>
   </div>
 );
+// --- MODIFICATION END ---
+
 
 const CodeHighlighter = ({ codeString }) => {
   if (!codeString) return null;
@@ -104,14 +105,29 @@ const CodeCTASection = ({ projectBlueprint, codeSnippet, onActionClick }) => (
   </div>
 );
 
+const useWindowSize = () => {
+  const [size, setSize] = useState([0, 0]);
+  useLayoutEffect(() => {
+    function updateSize() { setSize([window.innerWidth, window.innerHeight]); }
+    window.addEventListener('resize', updateSize);
+    updateSize();
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+  return size;
+};
+
 const SummaryPage = () => {
   const [analysis, setAnalysis] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadingText, setLoadingText] = useState('Generating Persona & Blueprint...');
+  const [loadingText, setLoadingText] =
+    useState('Generating Persona & Blueprint...');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(false);
   const router = useRouter();
+  
+  const [width] = useWindowSize();
+  const isMobile = width < 768;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -193,6 +209,16 @@ const SummaryPage = () => {
 
   const hasContent = !!analysis;
 
+  const pageStyle = {
+    width: '100%', 
+    minHeight: '100vh', 
+    padding: isMobile ? '2rem 1rem' : '3rem', 
+    boxSizing: 'border-box', 
+    background: 'radial-gradient(ellipse at top, rgba(10, 228, 166, 0.15), #141414 70%)', 
+    backgroundColor: '#141414', 
+    color: '#ffffff'
+  };
+
   return (
     <>
       <style jsx global>{`
@@ -211,11 +237,16 @@ const SummaryPage = () => {
           align-items: center;
           justify-content: center;
           cursor: pointer;
-          transition: transform 0.2s ease, opacity 0.3s ease;
+          transition: transform 0.3s ease, opacity 0.3s ease, bottom 0.3s ease;
           opacity: ${showScrollButton ? 1 : 0};
           transform: ${showScrollButton ? 'scale(1)' : 'scale(0.8)'};
           pointer-events: ${showScrollButton ? 'auto' : 'none'};
         }
+        
+        .scroll-to-button.is-at-bottom {
+          bottom: 110px;
+        }
+
         .scroll-to-button:hover {
           background-color: #00b361;
           transform: scale(1.1);
@@ -243,7 +274,7 @@ const SummaryPage = () => {
           }
         }
       `}</style>
-      <div style={{ width: '100%', minHeight: '100vh', padding: '3rem', boxSizing: 'border-box', background: 'radial-gradient(ellipse at top, rgba(10, 228, 166, 0.15), #141414 70%)', backgroundColor: '#141414', color: '#ffffff' }}>
+      <div style={pageStyle}>
         <div id="page-top" style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
           <Button
             type="text"
@@ -287,7 +318,7 @@ const SummaryPage = () => {
         </Modal>
       </div>
       {showScrollButton && (
-        <button onClick={handleScrollClick} className="scroll-to-button">
+        <button onClick={handleScrollClick} className={`scroll-to-button ${isAtBottom ? 'is-at-bottom' : ''}`}>
           <div className="breathing-circle" />
           {isAtBottom ? <ArrowUpOutlined className="scroll-icon" /> : <ArrowDownOutlined className="scroll-icon" />}
         </button>

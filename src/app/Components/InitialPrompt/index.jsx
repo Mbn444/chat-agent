@@ -1,11 +1,20 @@
 // File Location: src/app/Components/InitialPrompt/index.jsx
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { Typography, Input, Button } from 'antd';
-import './styles.css'; // Import the stylesheet
+import './styles.css';
 
 const { Title, Paragraph } = Typography;
 const { TextArea } = Input;
+
+const suggestions = [
+  'Create a financial app',
+  'Design an app like instagram',
+  'Build a project management app',
+  'Create an app like Uber',
+  'Generate app like Airbnb',
+  'Build a mobile app'
+];
 
 const headingPhrases = [
   'What do you want to build?',
@@ -13,20 +22,27 @@ const headingPhrases = [
   "Let's create something amazing."
 ];
 
-const suggestions = [
-  'Create a financial app',
-  'Design a directory website',
-  'Build a project management app',
-  'Create an app like Uber',
-  'Generate app like Airbnb',
-  'Build a mobile app'
-];
+const useWindowSize = () => {
+  const [size, setSize] = useState([0, 0]);
+  useLayoutEffect(() => {
+    function updateSize() { setSize([window.innerWidth, window.innerHeight]); }
+    window.addEventListener('resize', updateSize);
+    updateSize();
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+  return size;
+};
+
 
 const InitialPrompt = ({ onStartChat }) => {
   const [idea, setIdea] = useState('');
   const [isAnimated, setIsAnimated] = useState(false);
   const [headingIndex, setHeadingIndex] = useState(0);
   const [isFading, setIsFading] = useState(false);
+  const [width] = useWindowSize();
+  const isMobile = width < 768;
+  const [isTyping, setIsTyping] = useState(false);
+
 
   useEffect(() => {
     const bubbleTimer = setTimeout(() => { setIsAnimated(true); }, 100);
@@ -34,13 +50,17 @@ const InitialPrompt = ({ onStartChat }) => {
   }, []);
 
   useEffect(() => {
-    const displayTimer = setTimeout(() => { setIsFading(true); }, 4000);
-    const changeTextTimer = setTimeout(() => {
-      setHeadingIndex((prevIndex) => (prevIndex + 1) % headingPhrases.length);
-      setIsFading(false);
-    }, 4500);
-    return () => { clearTimeout(displayTimer); clearTimeout(changeTextTimer); };
-  }, [headingIndex]);
+    if (!isMobile) {
+      const displayTimer = setTimeout(() => { setIsFading(true); }, 4000);
+      const changeTextTimer = setTimeout(() => {
+        setHeadingIndex((prevIndex) => (prevIndex + 1) % headingPhrases.length);
+        setIsFading(false);
+      }, 4500);
+      return () => { clearTimeout(displayTimer); clearTimeout(changeTextTimer); };
+    } else {
+        setHeadingIndex(0);
+    }
+  }, [headingIndex, isMobile]);
 
   const handleStart = () => { if (idea.trim()) { onStartChat(idea); } };
   const handleBubbleClick = (suggestionText) => { setIdea(suggestionText); };
@@ -72,7 +92,7 @@ const InitialPrompt = ({ onStartChat }) => {
   };
 
   return (
-    <div className="initial-prompt-container">
+    <div className={`initial-prompt-container ${isTyping ? 'is-typing' : ''}`}>
       <style jsx global>{`
         .suggestion-bubble:hover {
           background-color: rgba(255, 255, 255, 0.1) !important;
@@ -81,51 +101,84 @@ const InitialPrompt = ({ onStartChat }) => {
         .suggestion-bubble:active {
           transform: ${isAnimated ? 'translateX(0) scale(0.95)' : 'translateX(-500px) scale(0.95)'} !important;
         }
+        
+        .hidden-on-typing {
+          max-height: 1000px;
+          opacity: 1;
+          overflow: hidden;
+          transition: all 0.4s ease-out;
+        }
+
+        .is-typing .hidden-on-typing {
+          max-height: 0;
+          opacity: 0;
+          margin-bottom: 0 !important;
+          min-height: 0 !important; 
+        }
       `}</style>
+
+      {/* --- MODIFICATION START --- */}
+      {/* The 'hidden-on-typing' class has been REMOVED from the Title component. */}
       <Title
         level={1}
         className="initial-prompt-title"
+      /* --- MODIFICATION END --- */
         style={{
-          color: '#ffffff', marginBottom: '1rem', height: '80px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'opacity 0.5s ease-in-out', opacity: isFading ? 0 : 1,
+          color: '#ffffff', 
+          marginBottom: '1rem', 
+          minHeight: '80px',
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          textAlign: 'center',
+          transition: 'opacity 0.5s ease-in-out', 
+          opacity: isFading ? 0 : 1,
         }}
       >
-        {headingPhrases[headingIndex]}
+        {isMobile ? "Describe your vision." : headingPhrases[headingIndex]}
       </Title>
-      {/* --- THIS IS THE UPDATED PART --- */}
-      <Paragraph className="initial-prompt-paragraph" style={{ color: '#a0a0a0', fontSize: '1.1rem', marginBottom: '2rem', textAlign: 'center' }}>
+      
+      {/* This Paragraph will still be hidden when typing. */}
+      <Paragraph className="initial-prompt-paragraph hidden-on-typing" style={{ color: '#a0a0a0', fontSize: '1.1rem', marginBottom: '2rem', textAlign: 'center' }}>
         Create stunning apps & websites by chatting with AI.
       </Paragraph>
-      {/* --- END OF UPDATE --- */}
+
       <TextArea
         value={idea}
         onChange={(e) => setIdea(e.target.value)}
         placeholder="Type your idea and we'll bring it to life (e.g., 'a fitness tracking app for hikers')"
         autoSize={{ minRows: 4, maxRows: 8 }}
         style={{ fontSize: '1rem', marginBottom: '2rem' }}
+        onFocus={() => setIsTyping(true)}
+        onBlur={() => setIsTyping(false)}
       />
-      <div className="suggestion-bubbles-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+      
+      {/* This entire block of suggestion bubbles will still be hidden when typing. */}
+      <div className="suggestion-bubbles-container hidden-on-typing" style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {renderBubble(suggestions[0], 0)}
           {renderBubble(suggestions[1], 1)}
           {renderBubble(suggestions[2], 2)}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
-          {renderBubble(suggestions[3], 3)}
-          {renderBubble(suggestions[4], 4)}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
-          {renderBubble(suggestions[5], 5)}
-        </div>
+        
+        {!isMobile && (
+            <>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {renderBubble(suggestions[3], 3)}
+                    {renderBubble(suggestions[4], 4)}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {renderBubble(suggestions[5], 5)}
+                </div>
+            </>
+        )}
       </div>
-      {/* --- THIS IS THE UPDATED PART --- */}
+
       <div style={{ textAlign: 'center' }}>
         <Button type="primary" size="large" onClick={handleStart} disabled={!idea.trim()}>
           Start Building
         </Button>
       </div>
-      {/* --- END OF UPDATE --- */}
     </div>
   );
 };

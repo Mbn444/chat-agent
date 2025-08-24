@@ -14,7 +14,10 @@ You MUST respond with ONLY a valid JSON object. Do not include any text before o
 The JSON object you return MUST have the following structure and keys:
 
 {
-  "briefDescription": "A narrative paragraph describing the ideal user persona.",
+  // --- MODIFICATION START ---
+  // The instruction for briefDescription is now much more specific.
+  "briefDescription": "A detailed, narrative paragraph of at least 80-100 words describing the ideal user persona. Include their background, motivations, goals, and key frustrations related to the app's purpose.",
+  // --- MODIFICATION END ---
   "painPoints": [
     "A list of 3-5 pain points this user faces."
   ],

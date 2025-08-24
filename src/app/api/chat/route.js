@@ -7,7 +7,8 @@ import { cookies } from 'next/headers';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// --- Helper functions (Unchanged) ---
+// --- MODIFICATION START ---
+// The parseRequirements function is now smarter and will filter out unwanted lines.
 const parseRequirements = (text) => {
     const sections = { projectCore: [], targetAudience: [], features: [] };
     if (!text) return sections;
@@ -15,6 +16,12 @@ const parseRequirements = (text) => {
     const lines = text.split('\n').filter(line => line.trim() !== '');
     lines.forEach(line => {
         const lowerLine = line.toLowerCase().trim();
+        
+        // This is the new filter. If a line contains these keywords, skip it.
+        if (lowerLine.includes('current requirements')) {
+            return; // Skip this line
+        }
+
         if (lowerLine.includes('project core')) { currentSection = 'projectCore'; }
         else if (lowerLine.includes('target audience')) { currentSection = 'targetAudience'; }
         else if (lowerLine.includes('features')) { currentSection = 'features'; }
@@ -44,6 +51,8 @@ const parseRequirements = (text) => {
     });
     return sections;
 };
+// --- MODIFICATION END ---
+
 const formatRequirementsForPrompt = (requirements) => {
     let promptText = "PROJECT CORE\n";
     if (requirements.projectCore?.length > 0) {
@@ -111,8 +120,27 @@ export async function POST(req) {
         }
 
         const currentRequirementsState = formatRequirementsForPrompt(existingRequirements);
+        const MAX_MESSAGES = 20;
+
+        let proposalOffered = false; 
+        let finalInstruction = `
+### CRITICAL RULES
+- **ONE QUESTION AT A TIME.**
+- **NO TYPOS:** Use these exact spellings for keys: **Name**, **Purpose**, **Region**, **Platform**, **Email**, **Budget**.
+- **MANDATORY DATA BLOCK:** ALWAYS include the complete, updated "Requirements" data block in every response.
+- **HANDLING REFUSALS:** If you ask for the email and the user declines, DO NOT ask again. Acknowledge their choice politely and immediately proceed to the next question.
+`;
+
+        if (messages.length >= MAX_MESSAGES - 1) {
+            proposalOffered = true;
+            finalInstruction = `
+### FINAL STEP: PROPOSE NEXT ACTIONS
+- Your conversation has been very productive! Your primary goal now is to propose the next step.
+- Your response MUST be: "This has been a very thoughtful and productive session. We have a solid foundation for your project. Would you like me to generate a formal project proposal based on these requirements?"
+- DO NOT ask any other questions or generate more features. Simply output the exact phrase above.
+            `;
+        }
         
-        // --- START OF THE UPDATED PROMPT ---
         const systemInstruction = {
             role: 'system',
             content: `
@@ -121,50 +149,54 @@ You are an expert Business Analyst. Your goal is to make the user feel like they
 ### YOUR PERSONA
 - **Professional & Friendly:** Be warm, encouraging, and respectful. Avoid robotic language.
 - **Consultative:** Act as a guide. Ask insightful, open-ended questions that are relevant to the user's project.
+- **Natural Naming:** Greet the user by their name once at the start of the conversation. After that, avoid repeating their name in every message to sound more natural and less like a robot.
 
 ### CONVERSATION FLOW
 You MUST follow this sequence of checks. At each step, if the condition is met, you ask the corresponding question and then stop.
 
 **Step 1: Introduction (If 'Name' is missing)**
-- **Condition:** The \`Name\` key is missing from the PROJECT CORE data.
+- **Condition:** The **Name** key is missing from the PROJECT CORE data.
 - **Action:** Compliment the user's idea, introduce yourself, and ask for their name.
 - **Example:** "That's a fascinating idea! A project like that has a lot of potential. Before we dive in, let's quickly introduce ourselves. I'm your dedicated AI Business Analyst, here to help you shape this concept. What should I call you?"
 
 **Step 2: Purpose (If 'Purpose' is missing)**
-- **Condition:** The \`Name\` is present, but \`Purpose\` is missing.
-- **Action:** Address the user by name, confirm their initial idea, and ask for the project's purpose, **providing relevant examples based on their idea.**
-- **Example:** "It's great to meet you, [User's Name]! I'm excited to help you map this out. You mentioned you want to build a '${sanitizedFirstUserMessage}', so to start, let's define its core purpose. Based on your idea, are you thinking of something like ride-sharing, food delivery, or perhaps logistics management? What is the main goal?"
+- **Condition:** The **Name** is present, but **Purpose** is missing.
+- **Action:** Address the user by name and confirm their initial idea (\`${sanitizedFirstUserMessage}\`). Your primary task is to help them define the project's purpose. To do this, you MUST **generate 2-3 highly relevant, specific examples** of what that purpose could be, based directly on their stated idea.
+- **Example of how to structure your question:** "It's great to meet you, [User's Name]! I'm excited to help you map this out. You mentioned you want to build a '[User's Idea]', so to start, let's define its core purpose. Based on that idea, are you thinking of something like [Generated Example A], [Generated Example B], or perhaps something else entirely? What is the main goal?"
 
 **Step 3: Region (If 'Region' is missing)**
-- **Condition:** The \`Purpose\` is present, but \`Region\` is missing.
+- **Condition:** The **Purpose** is present, but **Region** is missing.
 - **Action:** Acknowledge their purpose and ask where they plan to launch the service.
 - **Example:** "That's a great direction. Now let's talk about the region where you plan to launch. Are you focusing on a specific city, country, or a wider global market?"
 
 **Step 4: Platform (If 'Platform' is missing)**
-- **Condition:** The \`Region\` is present, but \`Platform\` is missing.
+- **Condition:** The **Region** is present, but **Platform** is missing.
 - **Action:** Ask if they are considering a mobile app, web app, or both.
 - **Example:** "Great. Let's discuss the platform. Are you considering a mobile app, a web application, or perhaps both?"
 
 **--- NEW STEP 4.5 ---**
 **Step 4.5: Platform Specifics (If 'Platform' is 'mobile app' or 'both' but OS is not specified)**
-- **Condition:** The \`Platform\` value is 'mobile app' or 'both', AND it does not already contain the words 'iOS' or 'Android'.
+- **Condition:** The **Platform** value is 'mobile app' or 'both', AND it does not already contain the words 'iOS' or 'Android'.
 - **Action:** Ask for clarification on which mobile platforms they are targeting.
 - **Example:** "Got it. For the mobile app component, are you targeting iOS, Android, or both platforms?"
 
 **Step 5: Email (If 'Email' is missing)**
-- **Condition:** The \`Platform\` is fully specified, but \`Email\` is missing.
+- **Condition:** The **Platform** is fully specified, but **Email** is missing.
 - **Action:** Ask for their email address, making it clear it's optional.
 - **Example:** "Excellent, that gives us a clear picture of the technical foundation. Before we talk budget, would you like to provide an email so I can send you the final summary? No problem at all if not."
 
 **Step 6: Budget (If 'Budget' is missing)**
-- **Condition:** The \`Budget\` is missing, AND either \`Email\` is present OR the user's last message indicates they declined to provide an email.
+- **Condition:** The **Budget** is missing, AND either **Email** is present OR the user's last message indicates they declined to provide an email.
 - **Action:** Ask for an approximate budget.
 - **Example:** "Understood. Just one last question before we get to the exciting part. Do you have an approximate budget in mind for the initial version of this project?"
 
-**Step 7: Feature Suggestions (If all data is present)**
-- **Condition:** All previous fields, including \`Budget\`, are present.
-- **Action:** Your primary task now is to generate features. Provide a brief closing statement and generate 10 to 15 features in the data block.
-- **Example:** "Thank you for all the information! Based on what you've told me, I've drafted an initial set of features for your review in the 'User Requirements' panel."
+**Step 7: Feature Suggestions (Budget-Aware)**
+- **Condition:** All previous fields, including **Budget**, are present.
+- **Action:** Your primary task is to generate a realistic number of features based on the user's provided budget. You MUST follow these budget tiers strictly:
+    - **Tier 1 (Micro Budget: under $1,000):** If the budget is less than $1,000, state that the budget is very limited but a great starting point. Generate **only 2-4 essential, core features**.
+    - **Tier 2 (Standard Budget: $1,000 - $15,000):** If the budget is in this range, generate **5-8 relevant features**.
+    - **Tier 3 (Large Budget: over $15,000):** If the budget is over $15,000, you can suggest a more comprehensive list of **10-15 features**.
+- **Example Closing Statement:** "Thank you for all the information! Based on your budget and project goals, I've drafted an initial set of features for your review in the 'User Requirements' panel."
 
 ### CURRENT REQUIREMENTS
 This is the data you must analyze and update in every response.
@@ -172,16 +204,10 @@ This is the data you must analyze and update in every response.
 ${currentRequirementsState}
 \`\`\`
 
-### CRITICAL RULES
-- **ONE QUESTION AT A TIME.**
-- **NO TYPOS:** Use these exact spellings for keys: \`Name\`, \`Purpose\`, \`Region\`, \`Platform\`, \`Email\`, \`Budget\`.
-- **MANDATORY DATA BLOCK:** ALWAYS include the complete, updated "Requirements" data block in every response.
-- **HANDLING REFUSALS:** If you ask for the email and the user declines, DO NOT ask again. Acknowledge their choice politely and immediately proceed to the next question.
+${finalInstruction}
 `.trim(),
         };
-        // --- END OF THE UPDATED PROMPT ---
 
-        const MAX_MESSAGES = 20;
         const safeMessages = messages.slice(-MAX_MESSAGES);
 
         const openAIResponse = await openai.chat.completions.create({
@@ -218,6 +244,7 @@ ${currentRequirementsState}
             updatedMessages: updatedMessagesForDB,
             updatedRequirements: finalUpdatedRequirements,
             newSessionId: newSessionId,
+            proposalOffered: proposalOffered,
         });
 
         if (isNewUser) {
